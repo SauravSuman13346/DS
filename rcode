@@ -1,0 +1,153 @@
+rm(list = ls())
+install.packages("caret") 
+install.packages("e1071") 
+install.packages("ggplot2")
+install.packages("corrplot")
+install.packages("pROC")
+install.packages("gridExtra")
+install.packages("magrittr")
+install.packages("C50")
+install.packages("lattice")
+
+library(ggplot2)
+library(gridExtra)
+library(dplyr)
+library(corrplot)
+library(pROC)
+library(C50)
+library(rpart)
+library(magrittr)
+library(rpart)
+library(MASS)
+library(gridExtra)
+library(caret) 
+library(e1071) 
+
+
+setwd("C:/Users/134757/Documents/Analytics")
+churnTest =  read.csv("Test_data.csv")
+churnTrain =  read.csv("Train_data.csv")
+View(churnTest)
+View(churnTrain)
+
+dfChurnTrain = churnTrain
+dfChurnTest = churnTest
+data(churn)
+
+exp1 = ggplot(dfChurnTrain, aes(area.code, fill = Churn)) + geom_bar(position = "fill") + labs(x = "Area code", y = "") + theme(legend.position = "none")
+exp2 = ggplot(dfChurnTrain, aes(international.plan, fill = Churn)) + geom_bar(position = "fill") + labs(x = "International Plan", y = "") + theme(legend.position = "none")
+exp3 = ggplot(dfChurnTrain, aes(voice.mail.plan, fill = Churn)) + geom_bar(position = "fill") + labs(x = "Voicemail", y = "") + theme(legend.position = "none") 
+exp4 = ggplot(dfChurnTrain, aes(number.vmail.messages, fill = Churn)) + geom_bar(position = "fill") + labs(x = "Customer calls", y = "") + theme(legend.position = "none") 
+grid.arrange(exp1, exp2, exp3, exp4, ncol = 4, nrow = 1, top = "Churn/Non-churn Proportion")
+
+
+daymin = ggplot(dfChurnTrain, aes(Churn, total.day.minutes, fill = Churn)) + geom_boxplot(alpha = 0.8) + theme(legend.position = "null")
+evemin = ggplot(dfChurnTrain, aes(Churn, total.eve.minutes, fill = Churn)) + geom_boxplot(alpha = 0.8) + theme(legend.position = "null")
+nitmin = ggplot(dfChurnTrain, aes(Churn, total.night.minutes, fill = Churn)) + geom_boxplot(alpha = 0.8) + theme(legend.position = "null")
+intmin = ggplot(dfChurnTrain, aes(Churn, total.intl.minutes, fill = Churn)) + geom_boxplot(alpha = 0.8) + theme(legend.position = "null")
+daycal = ggplot(dfChurnTrain, aes(Churn, total.day.calls, fill = Churn)) + geom_boxplot(alpha = 0.8) + theme(legend.position = "null")
+evecal = ggplot(dfChurnTrain, aes(Churn, total.eve.calls, fill = Churn)) + geom_boxplot(alpha = 0.8) + theme(legend.position = "null")
+nitcal = ggplot(dfChurnTrain, aes(Churn, total.night.calls, fill = Churn)) + geom_boxplot(alpha = 0.8) + theme(legend.position = "null")
+intcal = ggplot(dfChurnTrain, aes(Churn, total.intl.calls, fill = Churn)) + geom_boxplot(alpha = 0.8) + theme(legend.position = "null")
+grid.arrange(daymin, evemin, nitmin, intmin, 
+             daycal, evecal, nitcal, intcal, 
+             ncol = 4, nrow = 2)
+exp6 = ggplot(dfChurnTrain, aes(account.length, fill = Churn)) + geom_density(alpha = 0.7) + theme(legend.position = "null")
+exp7 = ggplot(dfChurnTrain, aes(number.vmail.messages, fill = Churn)) + geom_density(alpha = 0.7) + theme(legend.position = "null")
+grid.arrange(exp6, exp7, ncol = 2, nrow = 1)
+anyNA(dfChurnTrain)
+corrplot(cor(dfChurnTrain[sapply(dfChurnTrain, is.numeric)]))
+dfChurnTrain$total.day.charge = NULL
+dfChurnTrain$total.eve.charge = NULL
+dfChurnTrain$total.night.charge = NULL
+dfChurnTrain$total.intl.charge = NULL
+dfChurnTrain$state =NULL
+dfChurnTest$state = NULL
+dfChurnTest$total.day.charge = NULL
+dfChurnTest$total.eve.charge = NULL
+dfChurnTest$total.night.charge = NULL
+dfChurnTest$total.intl.charge = NULL
+dfChurnTest$phone.number = NULL
+dfChurnTrain$phone.number = NULL
+dfChurnTest
+
+#Building 3-fold Model
+modelCtrl = trainControl(method = "cv", number = 3)
+
+#Logistic Regression
+
+set.seed(123)
+glm.model = glm(Churn ~ ., family = "binomial", data = dfChurnTrain)
+summary(glm.model)
+varImp(glm.model)
+glm.pred = predict(glm.model, newdata = dfChurnTest)
+glm.accuracy = round(1-mean(glm.pred!=dfChurnTest$churn),2)
+table(actual=dfChurnTest$Churn, predicted=glm.pred)
+
+#CART
+set.seed(123)
+cart.model = train(Churn ~ ., method = "rpart2", data = dfChurnTrain, trControl = modelCtrl)
+cart.pred = predict(cart.model, newdata = dfChurnTest)
+cart.accuracy = 1-mean(cart.pred != dfChurnTest$churn)
+table(actual=dfChurnTest$Churn, predicted=cart.pred)
+#CART - gini
+set.seed(123)
+gini.cart.model = train(Churn ~ ., method = "rpart", data = dfChurnTrain,  parms = list(split = "gini"), trControl = modelCtrl)
+#Bagging
+set.seed(123)
+treebag.model = train(Churn ~ ., method = "treebag", data = dfChurnTrain, trControl = modelCtrl)
+# Boosted Tree
+set.seed(123)
+C5.model = train(Churn ~ ., method = "C5.0", data = dfChurnTrain, trControl = modelCtrl)
+#Random Forest
+set.seed(123)
+rf.model = train(Churn ~ ., method = "rf", data = dfChurnTrain, trControl = modelCtrl)
+results = resamples(list(CART=gini.cart.model, BAG=treebag.model, RF=rf.model))
+dotplot(results)
+gb.pred = predict(C5.model, newdata = dfChurnTest)
+gb.accuracy = 1-mean(gb.pred != dfChurnTest$churn)
+
+rf.pred1 = predict(rf.model, newdata = dfChurnTest)
+rf.accuracy = 1-mean(rf.pred1 != dfChurnTest$churn)
+
+glm.roc = roc(response = dfChurnTest$Churn, predictor = as.numeric(glm.pred))
+gb.roc = roc(response = dfChurnTest$Churn, predictor = as.numeric(gb.pred))
+rf.roc = roc(response = dfChurnTest$Churn, predictor = as.numeric(rf.pred1))
+
+plot(glm.roc,      legacy.axes = TRUE, print.auc.y = 0.4, print.auc = TRUE)
+plot(gb.roc, col = "blue", add = TRUE, print.auc.y = 0.5, print.auc = TRUE)
+plot(rf.roc, col = "red" , add = TRUE, print.auc.y = 0.6, print.auc = TRUE)
+
+legend(0.0,0.2, c("Random Forest", "Boosted Tree", "Logistic"), lty = c(1,1), lwd = c(2, 2), col = c("red", "blue", "black"), cex = 0.75)
+benefit = function(confMatrix) {
+  tp = confMatrix[1,1]; fn = confMatrix[1,2]
+  fp = confMatrix[2,1]; tn = confMatrix[2,2]
+  
+  tp.bnft = 1000      ; fn.cost = -2000
+  fp.cost = -250      ; tn.bnft = 50
+  
+  return(0.75*tp*tp.bnft + 
+           (1-0.75)*tp*fn.cost + fn*fn.cost + 
+           tn*tn.bnft + 
+           0.90*fp*fp.cost + (1-0.9)*fp*tn.bnft)
+}
+benefit(table(actual = dfChurnTest$Churn, predicted = rf.pred1))
+rf.pred2 = predict(rf.model, newdata = dfChurnTest, type = "prob")
+dfCB = data.frame(numeric(), numeric())
+for (i in seq(0,1,0.1)) {
+  newValue = factor(ifelse( rf.pred2[,1] > i, "yes", "no"), levels = levels(dfChurnTest$Churn))
+  cm = table(actual=dfChurnTest$Churn, predicted=newValue)
+  dfCB = rbind(dfCB,c(i, benefit(cm)))
+}
+colnames(dfCB) = c("CutOff","Benefit($)")
+dfCB
+rf2.pred = factor(ifelse( rf.pred2[,1] > 0.3, "yes", "no"), levels = levels(dfChurnTest$Churn))
+rf2.accuracy = round(1-mean(rf2.pred != dfChurnTest$Churn),2)
+
+glm.roc = roc(response = dfChurnTest$Churn, predictor = as.numeric(glm.pred))
+rf2.roc = roc(response = dfChurnTest$Churn, predictor = as.numeric(rf2.pred))
+
+plot(glm.roc, col = "blue", legacy.axes = TRUE, print.auc.y = 0.6, print.auc = TRUE)
+plot(rf2.roc, col = "red" , add = TRUE, print.auc.x = 0.8, print.auc.y = 0.9, print.auc = TRUE)
+
+legend(0.05,0.95, c("Predictive (rf)", "Interpretative (glm)"), lty = c(1,1), lwd = c(2, 2), col = c("red", "blue"), cex = 0.75)
